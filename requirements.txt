@@ -1,0 +1,6 @@
+chainlit==1.1.307
+google-generativeai==0.8.5
+google-genai==1.46.0
+python-dotenv==1.0.1
+Pillow==10.4.0
+asyncio
