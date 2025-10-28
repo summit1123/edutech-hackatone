@@ -64,6 +64,65 @@ class StoryTeller:
     def reset_input_attempts(self):
         """입력 시도 횟수 초기화"""
         self.input_attempts = 0
+    
+    async def generate_initial_story(self):
+        """사용자 정보를 바탕으로 초기 스토리 생성"""
+        try:
+            # 사용자 맞춤형 스토리 프롬프트 구성
+            story_prompt = f"""
+            경계선 지능 아동을 위한 개인 맞춤형 동화를 만들어주세요.
+            
+            사용자 정보:
+            - 학습 주제: {self.learning_subject}
+            - 사용자 특성: {self.user_profile}
+            - 좋아하는 것들: {self.favorite_topic}
+            
+            동화 작성 가이드라인:
+            1. 5-6세 아이가 이해할 수 있는 쉬운 언어 사용
+            2. 한 문장당 10-15단어 이내로 짧게 구성
+            3. {self.learning_subject} 학습 요소를 자연스럽게 포함
+            4. {self.favorite_topic} 요소를 주인공이나 배경에 활용
+            5. 따뜻하고 긍정적인 분위기 유지
+            6. 아이가 상호작용할 수 있는 질문이나 선택 상황 포함
+            
+            스토리 구조:
+            - 주인공 소개 (사용자 특성 반영)
+            - 문제 상황 또는 모험의 시작
+            - 학습 요소가 포함된 첫 번째 도전
+            - 다음 단계로 이어질 수 있는 열린 결말
+            
+            200자 내외의 짧은 첫 번째 에피소드를 작성해주세요.
+            """
+            
+            response = text_model.generate_content(story_prompt)
+            return response.text
+            
+        except Exception as e:
+            print(f"초기 스토리 생성 오류: {str(e)}")
+            return f"""
+            안녕하세요! 저는 {self.favorite_topic}을 좋아하는 친구예요! 
+            오늘은 {self.learning_subject}에 대해 재미있는 모험을 떠나볼 거예요.
+            
+            어떤 일이 일어날지 궁금하지 않나요? 
+            함께 모험을 시작해보아요!
+            """
+    
+    def extract_character_name_from_story(self, story_text):
+        """스토리에서 주인공 이름 추출 (기본값 설정)"""
+        # 간단한 이름 추출 로직 (추후 개선 가능)
+        if self.favorite_topic and any(animal in self.favorite_topic.lower() for animal in ['강아지', '고양이', '토끼', '곰']):
+            if '강아지' in self.favorite_topic.lower():
+                return "멍멍이"
+            elif '고양이' in self.favorite_topic.lower():
+                return "야옹이"
+            elif '토끼' in self.favorite_topic.lower():
+                return "토토"
+            elif '곰' in self.favorite_topic.lower():
+                return "곰돌이"
+        
+        # 기본 이름들 중 랜덤 선택
+        default_names = ["꼬마", "아이", "친구", "탐험가"]
+        return default_names[0]  # 일단 첫 번째로 고정
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -383,12 +442,40 @@ async def main(message: cl.Message):
             storyteller.story_stage = "story_generation"
             await cl.Message(content="🎨 여러분만의 특별한 동화를 만들고 있습니다... 잠시만 기다려주세요! ✨").send()
             
-            # 개인 맞춤형 스토리 생성 (이후 구현 예정)
-            await cl.Message(content="🚧 **다음 단계에서 구현 예정**: 맞춤형 스토리 생성 기능").send()
+            # 개인 맞춤형 초기 스토리 생성
+            initial_story = await storyteller.generate_initial_story()
+            
+            # 주인공 이름 설정
+            storyteller.character_name = storyteller.extract_character_name_from_story(initial_story)
+            
+            # 스토리 컨텍스트에 추가
+            storyteller.story_context.append({
+                "chapter": 1,
+                "content": initial_story,
+                "user_input": None,
+                "learning_focus": storyteller.learning_subject
+            })
+            
+            storyteller.current_chapter = 1
+            storyteller.story_stage = "story_ongoing"
+            
+            await cl.Message(
+                content=f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
+                f"{initial_story}\n\n"
+                "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
+                "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟"
+            ).send()
         else:
             await cl.Message(
                 content="**'동화 시작'**이라고 말씀해주시면 여러분만의 동화가 시작됩니다! 🍌"
             ).send()
+            
+    elif storyteller.story_stage == "story_ongoing":
+        # 동화 진행 중 - 사용자 응답을 받아 다음 스토리 생성
+        await cl.Message(content="🎨 다음 장면을 만들고 있습니다... ✨").send()
+        
+        # 다음 스토리 생성 (Task 4,5에서 구현 예정)
+        await cl.Message(content="🚧 **다음 단계에서 구현 예정**: 연속 스토리 생성 기능").send()
             
     else:
         # 기존 동화 진행 로직 (추후 개선 예정)
