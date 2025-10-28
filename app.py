@@ -247,6 +247,52 @@ class StoryTeller:
             return "learning_focus"
         else:
             return "general_continuation"
+    
+    async def generate_story_with_image(self, story_text, chapter_num, user_input=""):
+        """스토리 텍스트와 이미지를 병렬로 생성하여 함께 반환"""
+        try:
+            # 이미지 생성 프롬프트 구성
+            image_prompt = f"""
+            Create a children's book illustration for Chapter {chapter_num}:
+            
+            Story content: {story_text[:200]}
+            Character: {self.character_name} ({self.user_profile})
+            Favorite elements: {self.favorite_topic}
+            Learning subject: {self.learning_subject}
+            User request context: {user_input}
+            
+            Style requirements:
+            - Consistent character design throughout the series
+            - Warm, friendly children's book illustration
+            - Crayon delight style with soft textures
+            - Bright, cheerful colors appropriate for 5-6 year olds
+            - Simple, clear composition
+            - Include elements related to {self.learning_subject}
+            - Incorporate {self.favorite_topic} naturally in the scene
+            
+            Visual consistency: Maintain the same character appearance, proportions, and art style as previous chapters.
+            """
+            
+            # 이미지 생성 시작 메시지
+            await cl.Message(content="🎨 이미지를 생성하고 있습니다...").send()
+            
+            # 이미지 생성
+            image_data = await self.generate_story_image(
+                story_prompt=story_text,
+                character_description=f"{self.character_name} ({self.user_profile})",
+                style="consistent children's book crayon illustration"
+            )
+            
+            return story_text, image_data
+            
+        except Exception as e:
+            print(f"통합 생성 오류: {str(e)}")
+            return story_text, None
+    
+    def should_generate_image(self, chapter_num):
+        """이미지 생성 여부 결정 (성능 최적화)"""
+        # 첫 번째 챕터와 3챕터마다 이미지 생성
+        return chapter_num == 1 or chapter_num % 3 == 0
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -577,12 +623,44 @@ async def main(message: cl.Message):
             storyteller.add_to_story_context(initial_story, user_input=None)
             storyteller.story_stage = "story_ongoing"
             
-            await cl.Message(
-                content=f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
-                f"{initial_story}\n\n"
-                "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
-                "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟"
-            ).send()
+            # 첫 번째 챕터는 항상 이미지와 함께
+            await cl.Message(content="🎨 첫 번째 장면을 위한 특별한 이미지를 만들고 있어요...").send()
+            
+            story_text, image_data = await storyteller.generate_story_with_image(
+                initial_story, 
+                1, 
+                "story_start"
+            )
+            
+            if image_data:
+                # 이미지를 파일로 저장
+                image_filename = f"story_chapter_1.png"
+                with open(image_filename, 'wb') as f:
+                    f.write(image_data)
+                
+                # 이미지 요소 생성
+                image_element = cl.Image(
+                    name=image_filename,
+                    display="inline",
+                    path=image_filename
+                )
+                
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
+                    f"{initial_story}\n\n"
+                    "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
+                    "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟",
+                    elements=[image_element]
+                ).send()
+            else:
+                # 이미지 생성 실패 시 텍스트만
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
+                    f"{initial_story}\n\n"
+                    "🎨 (이미지 생성 중 문제가 발생했습니다)\n\n"
+                    "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
+                    "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟"
+                ).send()
         else:
             await cl.Message(
                 content="**'동화 시작'**이라고 말씀해주시면 여러분만의 동화가 시작됩니다! 🍌"
@@ -615,13 +693,60 @@ async def main(message: cl.Message):
         elif user_intent == "social_interaction":
             intent_message = "👫 **친구 만들기**: 새로운 친구와의 만남이 기대되네요!"
         
-        await cl.Message(
-            content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {learning_info['chapters_count']}**\n\n"
-            f"{continuation_story}\n\n"
-            f"{intent_message}\n\n" if intent_message else ""
-            "**또 어떤 일이 일어났으면 좋겠나요?**\n"
-            "계속해서 여러분의 아이디어로 이야기를 만들어가요! 🌟"
-        ).send()
+        # 이미지 생성 여부 결정
+        current_chapter = learning_info['chapters_count']
+        should_create_image = storyteller.should_generate_image(current_chapter)
+        
+        if should_create_image:
+            # 텍스트와 이미지를 함께 생성
+            await cl.Message(content="🎨 특별한 장면을 위해 이미지도 함께 만들고 있어요...").send()
+            
+            story_text, image_data = await storyteller.generate_story_with_image(
+                continuation_story, 
+                current_chapter, 
+                user_input
+            )
+            
+            if image_data:
+                # 이미지를 파일로 저장
+                image_filename = f"story_chapter_{current_chapter}.png"
+                with open(image_filename, 'wb') as f:
+                    f.write(image_data)
+                
+                # 이미지 요소 생성
+                image_element = cl.Image(
+                    name=image_filename,
+                    display="inline",
+                    path=image_filename
+                )
+                
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
+                    f"{continuation_story}\n\n"
+                    f"{intent_message}\n\n" if intent_message else ""
+                    "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+                    "계속해서 여러분의 아이디어로 이야기를 만들어가요! 🌟",
+                    elements=[image_element]
+                ).send()
+            else:
+                # 이미지 생성 실패 시 텍스트만
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
+                    f"{continuation_story}\n\n"
+                    f"🎨 (이미지 생성 중 문제가 발생했습니다)\n\n"
+                    f"{intent_message}\n\n" if intent_message else ""
+                    "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+                    "계속해서 여러분의 아이디어로 이야기를 만들어가요! 🌟"
+                ).send()
+        else:
+            # 텍스트만 표시 (성능 최적화)
+            await cl.Message(
+                content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
+                f"{continuation_story}\n\n"
+                f"{intent_message}\n\n" if intent_message else ""
+                "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+                "계속해서 여러분의 아이디어로 이야기를 만들어가요! 🌟"
+            ).send()
             
     else:
         # 기존 동화 진행 로직 (추후 개선 예정)
