@@ -182,6 +182,71 @@ class StoryTeller:
             "chapters_count": len(self.story_context),
             "topics_covered": learning_topics_covered
         }
+    
+    async def generate_continuation_story(self, user_input):
+        """사용자 입력을 바탕으로 연속 스토리 생성"""
+        try:
+            # 최근 스토리 컨텍스트 가져오기
+            context_summary = self.get_story_context_summary(last_n_chapters=3)
+            character_info = self.get_character_consistency_info()
+            
+            # 연속 스토리 생성 프롬프트
+            continuation_prompt = f"""
+            경계선 지능 아동을 위한 동화의 다음 장면을 만들어주세요.
+            
+            현재 상황:
+            {context_summary}
+            
+            캐릭터 정보:
+            {character_info}
+            
+            사용자 요청: {user_input}
+            
+            작성 가이드라인:
+            1. 이전 스토리와 자연스럽게 연결되도록 작성
+            2. 사용자의 요청을 창의적으로 반영
+            3. 5-6세 아이가 이해할 수 있는 쉬운 언어 사용
+            4. 한 문장당 10-15단어 이내로 구성
+            5. {self.learning_subject} 학습 요소를 자연스럽게 포함
+            6. 주인공 {self.character_name}의 특성 유지
+            7. 따뜻하고 긍정적인 분위기 유지
+            8. 다음 상호작용을 유도하는 열린 결말
+            
+            150-200자 내외의 다음 장면을 작성해주세요.
+            """
+            
+            response = text_model.generate_content(continuation_prompt)
+            return response.text
+            
+        except Exception as e:
+            print(f"연속 스토리 생성 오류: {str(e)}")
+            return f"""
+            {self.character_name}이/가 {user_input}을/를 보며 신기해했어요!
+            
+            "와, 정말 재미있겠다!" {self.character_name}이/가 말했어요.
+            
+            여러분이라면 {self.character_name}과/와 함께 무엇을 하고 싶나요?
+            """
+    
+    def analyze_user_intent(self, user_input):
+        """사용자 입력 의도 분석 (간단한 키워드 기반)"""
+        user_input_lower = user_input.lower()
+        
+        # 감정/행동 키워드
+        if any(word in user_input_lower for word in ['무서', '겁', '두려']):
+            return "fear_concern"
+        elif any(word in user_input_lower for word in ['기쁘', '행복', '좋아', '재미']):
+            return "positive_emotion"
+        elif any(word in user_input_lower for word in ['도움', '도와', '구해']):
+            return "help_action"
+        elif any(word in user_input_lower for word in ['만나', '친구', '같이']):
+            return "social_interaction"
+        elif any(word in user_input_lower for word in ['가자', '가고', '이동', '떠나']):
+            return "movement_adventure"
+        elif any(word in user_input_lower for word in ['배우', '공부', '알아', '학습']):
+            return "learning_focus"
+        else:
+            return "general_continuation"
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -527,20 +592,35 @@ async def main(message: cl.Message):
         # 동화 진행 중 - 사용자 응답을 받아 다음 스토리 생성
         await cl.Message(content="🎨 다음 장면을 만들고 있습니다... ✨").send()
         
-        # 스토리 컨텍스트 기반 연속 스토리 생성 (Task 5에서 구현 예정)
+        # 사용자 의도 분석
+        user_intent = storyteller.analyze_user_intent(user_input)
         
-        # 현재 컨텍스트 요약 표시 (디버깅용)
-        context_summary = storyteller.get_story_context_summary()
+        # 연속 스토리 생성
+        continuation_story = await storyteller.generate_continuation_story(user_input)
+        
+        # 스토리 컨텍스트에 추가
+        storyteller.add_to_story_context(continuation_story, user_input)
+        
+        # 학습 진행도 확인
         learning_info = storyteller.get_learning_progression()
         
+        # 의도에 따른 추가 메시지 생성
+        intent_message = ""
+        if user_intent == "learning_focus":
+            intent_message = "📚 **학습 포인트**: 이번 장면에서 새로운 것을 배웠네요!"
+        elif user_intent == "positive_emotion":
+            intent_message = "😊 **기분 좋은 순간**: 즐거운 모험이 계속되고 있어요!"
+        elif user_intent == "help_action":
+            intent_message = "🤝 **도움주기**: 친구를 도와주는 마음이 아름다워요!"
+        elif user_intent == "social_interaction":
+            intent_message = "👫 **친구 만들기**: 새로운 친구와의 만남이 기대되네요!"
+        
         await cl.Message(
-            content=f"📚 **현재 스토리 상황**:\n"
-            f"• 주인공: {storyteller.character_name}\n"
-            f"• 챕터: {learning_info['chapters_count']}\n"
-            f"• 학습 주제: {learning_info['main_subject']}\n\n"
-            f"**최근 스토리 흐름**:\n{context_summary}\n\n"
-            f"**사용자 요청**: {user_input}\n\n"
-            "🚧 **다음 단계에서 구현 예정**: 컨텍스트 기반 연속 스토리 생성"
+            content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {learning_info['chapters_count']}**\n\n"
+            f"{continuation_story}\n\n"
+            f"{intent_message}\n\n" if intent_message else ""
+            "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+            "계속해서 여러분의 아이디어로 이야기를 만들어가요! 🌟"
         ).send()
             
     else:
