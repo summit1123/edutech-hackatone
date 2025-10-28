@@ -219,170 +219,75 @@ async def start():
     await cl.Message(
         content="🍌 **동화 나노바나나에 오신 것을 환영합니다!** 📚✨\n\n"
         "저는 여러분만의 특별한 동화책을 만들어드리는 AI 도우미입니다.\n\n"
-        "**어떤 동화를 만들고 싶으세요?**\n"
-        "- 주인공과 배경을 알려주세요\n"
-        "- 어떤 모험을 떠나고 싶은지 말해주세요\n"
-        "- 이미지도 함께 생성해드립니다!\n\n"
-        "예시: '용감한 토끼가 마법의 숲에서 친구들을 구하는 이야기를 만들어주세요'"
+        "먼저 여러분에 대해 알려주세요! 다음 정보들을 차례대로 입력해주시면 됩니다:\n\n"
+        "**1단계**: 학습하고 싶은 주제를 알려주세요\n"
+        "**2단계**: 여러분에 대해 소개해주세요\n" 
+        "**3단계**: 좋아하는 것들을 알려주세요\n\n"
+        "**먼저, 어떤 주제를 학습하고 싶으신가요?**\n"
+        "예시: 숫자, 색깔, 동물, 한글, 영어 등"
     ).send()
+    
+    # 초기 상태 설정
+    storyteller.story_stage = "input_subject"
 
 @cl.on_message
 async def main(message: cl.Message):
-    user_input = message.content.lower()
+    user_input = message.content.strip()
     
-    # 새로운 동화 시작
-    if any(keyword in user_input for keyword in ['동화', '이야기', '스토리', '만들어']):
-        await cl.Message(content="🎨 동화 이미지를 생성하고 있습니다... 잠시만 기다려주세요!").send()
+    # Phase 1: 사용자 정보 수집
+    if storyteller.story_stage == "input_subject":
+        # 1단계: 학습 주제 입력받기
+        storyteller.learning_subject = user_input
+        await cl.Message(
+            content=f"✅ **학습 주제**: {user_input}\n\n"
+            "**2단계: 여러분에 대해 소개해주세요**\n"
+            "나이, 성격, 특징 등을 자유롭게 알려주세요!\n\n"
+            "예시: '6살이고 호기심이 많아요', '조용하고 책 읽기를 좋아해요'"
+        ).send()
+        storyteller.story_stage = "input_profile"
         
-        # 스토리 텍스트 생성
-        story_text = await storyteller.generate_story_text(
-            prompt=f"다음 요청으로 아이들을 위한 재미있는 동화를 시작해주세요: {message.content}",
-            context="새로운 동화를 시작합니다. 발단과 전개 부분을 만들어주세요."
-        )
+    elif storyteller.story_stage == "input_profile":
+        # 2단계: 사용자 프로필 입력받기
+        storyteller.user_profile = user_input
+        await cl.Message(
+            content=f"✅ **사용자 정보**: {user_input}\n\n"
+            "**3단계: 좋아하는 것들을 알려주세요**\n"
+            "좋아하는 동물, 색깔, 음식, 놀이 등 무엇이든 좋아요!\n\n"
+            "예시: '강아지와 파란색', '공주님과 성', '자동차와 로봇'"
+        ).send()
+        storyteller.story_stage = "input_favorite"
         
-        # 실제 이미지 생성
-        image_data = await storyteller.generate_story_image(
-            story_prompt=message.content,
-            character_description="귀여운 동화 캐릭터들",
-            style="따뜻하고 부드러운 동화책 일러스트"
-        )
+    elif storyteller.story_stage == "input_favorite":
+        # 3단계: 좋아하는 것들 입력받기
+        storyteller.favorite_topic = user_input
         
-        if image_data:
-            # 이미지를 파일로 저장
-            image_filename = f"story_image_{storyteller.current_chapter}.png"
-            with open(image_filename, 'wb') as f:
-                f.write(image_data)
+        # 모든 정보 수집 완료 - 요약 표시
+        await cl.Message(
+            content=f"✅ **좋아하는 것들**: {user_input}\n\n"
+            "🎉 **정보 수집이 완료되었습니다!**\n\n"
+            "📋 **입력하신 정보**:\n"
+            f"• **학습 주제**: {storyteller.learning_subject}\n"
+            f"• **사용자 정보**: {storyteller.user_profile}\n"
+            f"• **좋아하는 것들**: {storyteller.favorite_topic}\n\n"
+            "이제 여러분만을 위한 특별한 동화를 만들어보겠습니다! 🍌📚\n"
+            "**'동화 시작'**이라고 말하면 동화가 시작됩니다!"
+        ).send()
+        storyteller.story_stage = "ready_to_start"
+        
+    elif storyteller.story_stage == "ready_to_start":
+        # 동화 시작 준비 완료 상태
+        if any(keyword in user_input.lower() for keyword in ['동화', '시작', '만들어', '스토리']):
+            storyteller.story_stage = "story_generation"
+            await cl.Message(content="🎨 여러분만의 특별한 동화를 만들고 있습니다... 잠시만 기다려주세요! ✨").send()
             
-            # 이미지 요소 생성
-            image_element = cl.Image(
-                name=image_filename,
-                display="inline",
-                path=image_filename
-            )
-            
-            story_response = f"""
-📖 **새로운 동화가 시작됩니다!**
-
-{story_text}
-
-**다음에 어떤 일이 일어났으면 좋겠나요?**
-- 이야기를 계속 이어가거나
-- 다른 장면을 상상해보세요
-
-예시: "주인공이 친구를 만났어요" 또는 "숲에서 신비한 것을 발견했어요"
-            """
-            
+            # 개인 맞춤형 스토리 생성 (이후 구현 예정)
+            await cl.Message(content="🚧 **다음 단계에서 구현 예정**: 맞춤형 스토리 생성 기능").send()
+        else:
             await cl.Message(
-                content=story_response,
-                elements=[image_element]
+                content="**'동화 시작'**이라고 말씀해주시면 여러분만의 동화가 시작됩니다! 🍌"
             ).send()
-        else:
-            # 이미지 생성 실패 시 텍스트만
-            story_response = f"""
-📖 **새로운 동화가 시작됩니다!**
-
-{story_text}
-
-🎨 (이미지 생성 중 문제가 발생했습니다)
-
-**다음에 어떤 일이 일어났으면 좋겠나요?**
-- 이야기를 계속 이어가거나
-- 다른 장면을 상상해보세요
-            """
-            await cl.Message(content=story_response).send()
-        
-        storyteller.current_chapter += 1
-    
-    # 이미지 편집 요청
-    elif '이미지 편집' in user_input or '편집' in user_input:
-        # 가장 최근 이미지 파일 찾기
-        latest_image = f"story_image_{storyteller.current_chapter-1}.png"
-        
-        if os.path.exists(latest_image):
-            await cl.Message(content="🎨 이미지를 편집하고 있습니다...").send()
             
-            # 편집 프롬프트 추출
-            edit_prompt = message.content.replace('이미지 편집:', '').replace('편집:', '').strip()
-            
-            # 새로운 이미지 생성
-            new_image_data = await storyteller.edit_story_image(None, edit_prompt)
-            
-            if new_image_data:
-                # 편집된 이미지 저장
-                edited_filename = f"story_image_{storyteller.current_chapter}_edited.png"
-                with open(edited_filename, 'wb') as f:
-                    f.write(new_image_data)
-                
-                image_element = cl.Image(
-                    name=edited_filename,
-                    display="inline",
-                    path=edited_filename
-                )
-                
-                await cl.Message(
-                    content=f"✨ **장면이 바뀌었습니다!**\n\n편집 내용: {edit_prompt}\n\n계속해서 이야기를 이어가거나 추가 변경을 요청해주세요!",
-                    elements=[image_element]
-                ).send()
-            else:
-                await cl.Message(
-                    content=f"✨ **장면 변경 요청을 받았습니다!**\n\n편집 내용: {edit_prompt}\n\n(이미지 생성 중 문제가 발생했습니다)\n\n계속해서 이야기를 이어가거나 추가 변경을 요청해주세요!"
-                ).send()
-            
-            storyteller.current_chapter += 1
-        else:
-            await cl.Message(content="편집할 이미지를 찾을 수 없습니다. 먼저 동화를 시작해주세요!").send()
-    
-    # 스토리 계속하기
     else:
-        await cl.Message(content="🎨 다음 장면을 생성하고 있습니다...").send()
-        
-        # 스토리 계속 생성
-        continued_story = await storyteller.generate_story_text(
-            prompt=f"이야기를 계속 이어가주세요: {message.content}",
-            context=f"현재 {storyteller.current_chapter}장입니다. 이전 이야기에서 이어서 전개해주세요."
-        )
-        
-        # 다음 장면 이미지 생성
-        image_data = await storyteller.generate_story_image(
-            story_prompt=f"Next scene: {message.content}",
-            character_description="동일한 캐릭터들",
-            style="일관된 동화책 일러스트 스타일"
-        )
-        
-        if image_data:
-            image_filename = f"story_image_{storyteller.current_chapter}.png"
-            with open(image_filename, 'wb') as f:
-                f.write(image_data)
-            
-            image_element = cl.Image(
-                name=image_filename,
-                display="inline",
-                path=image_filename
-            )
-            
-            story_continue = f"""
-📖 **이야기가 계속됩니다...**
-
-{continued_story}
-
-**또 어떤 재미있는 일이 일어날까요?** 계속 이야기를 들려주세요!
-            """
-            
-            await cl.Message(
-                content=story_continue,
-                elements=[image_element]
-            ).send()
-        else:
-            story_continue = f"""
-📖 **이야기가 계속됩니다...**
-
-{continued_story}
-
-🎨 (이미지 생성 중 문제가 발생했습니다)
-
-**또 어떤 재미있는 일이 일어날까요?** 계속 이야기를 들려주세요!
-            """
-            await cl.Message(content=story_continue).send()
-        
-        storyteller.current_chapter += 1
+        # 기존 동화 진행 로직 (추후 개선 예정)
+        await cl.Message(content="🚧 **개발 중**: 동화 진행 기능이 곧 추가될 예정입니다!").send()
 
