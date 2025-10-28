@@ -98,7 +98,8 @@ async def test_story_generation():
     assert storyteller.should_generate_image(1) == True
     assert storyteller.should_generate_image(2) == False
     assert storyteller.should_generate_image(3) == True
-    assert storyteller.should_generate_image(4) == True
+    assert storyteller.should_generate_image(4) == False
+    assert storyteller.should_generate_image(6) == True
     print("✅ 이미지 생성 여부 결정 로직")
     
     # 2. 캐릭터 일관성 정보 테스트
