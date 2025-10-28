@@ -123,6 +123,65 @@ class StoryTeller:
         # 기본 이름들 중 랜덤 선택
         default_names = ["꼬마", "아이", "친구", "탐험가"]
         return default_names[0]  # 일단 첫 번째로 고정
+    
+    def get_story_context_summary(self, last_n_chapters=3):
+        """최근 N개 챕터의 스토리 컨텍스트 요약"""
+        if not self.story_context:
+            return "아직 이야기가 시작되지 않았습니다."
+        
+        # 최근 N개 챕터만 가져오기
+        recent_context = self.story_context[-last_n_chapters:] if len(self.story_context) > last_n_chapters else self.story_context
+        
+        summary = []
+        for context in recent_context:
+            chapter_info = f"챕터 {context['chapter']}: {context['content'][:100]}..."
+            if context['user_input']:
+                chapter_info += f" (사용자 요청: {context['user_input'][:50]}...)"
+            summary.append(chapter_info)
+        
+        return "\n".join(summary)
+    
+    def add_to_story_context(self, content, user_input=None):
+        """스토리 컨텍스트에 새 챕터 추가"""
+        self.current_chapter += 1
+        
+        new_context = {
+            "chapter": self.current_chapter,
+            "content": content,
+            "user_input": user_input,
+            "learning_focus": self.learning_subject,
+            "character_name": self.character_name,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        self.story_context.append(new_context)
+        
+        # 메모리 관리: 10개 이상이면 오래된 것 제거 (첫 번째는 유지)
+        if len(self.story_context) > 10:
+            # 첫 번째 챕터는 유지하고 중간 것들 제거
+            self.story_context = [self.story_context[0]] + self.story_context[-8:]
+    
+    def get_character_consistency_info(self):
+        """캐릭터 일관성을 위한 정보 반환"""
+        return f"""
+        주인공: {self.character_name}
+        사용자 특성: {self.user_profile}
+        좋아하는 것들: {self.favorite_topic}
+        학습 주제: {self.learning_subject}
+        """
+    
+    def get_learning_progression(self):
+        """학습 진행도 추적"""
+        learning_topics_covered = []
+        for context in self.story_context:
+            if context.get('learning_focus'):
+                learning_topics_covered.append(context['learning_focus'])
+        
+        return {
+            "main_subject": self.learning_subject,
+            "chapters_count": len(self.story_context),
+            "topics_covered": learning_topics_covered
+        }
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -448,15 +507,9 @@ async def main(message: cl.Message):
             # 주인공 이름 설정
             storyteller.character_name = storyteller.extract_character_name_from_story(initial_story)
             
-            # 스토리 컨텍스트에 추가
-            storyteller.story_context.append({
-                "chapter": 1,
-                "content": initial_story,
-                "user_input": None,
-                "learning_focus": storyteller.learning_subject
-            })
-            
-            storyteller.current_chapter = 1
+            # 스토리 컨텍스트에 추가 (새로운 함수 사용)
+            storyteller.current_chapter = 0  # add_to_story_context에서 증가시킴
+            storyteller.add_to_story_context(initial_story, user_input=None)
             storyteller.story_stage = "story_ongoing"
             
             await cl.Message(
@@ -474,8 +527,21 @@ async def main(message: cl.Message):
         # 동화 진행 중 - 사용자 응답을 받아 다음 스토리 생성
         await cl.Message(content="🎨 다음 장면을 만들고 있습니다... ✨").send()
         
-        # 다음 스토리 생성 (Task 4,5에서 구현 예정)
-        await cl.Message(content="🚧 **다음 단계에서 구현 예정**: 연속 스토리 생성 기능").send()
+        # 스토리 컨텍스트 기반 연속 스토리 생성 (Task 5에서 구현 예정)
+        
+        # 현재 컨텍스트 요약 표시 (디버깅용)
+        context_summary = storyteller.get_story_context_summary()
+        learning_info = storyteller.get_learning_progression()
+        
+        await cl.Message(
+            content=f"📚 **현재 스토리 상황**:\n"
+            f"• 주인공: {storyteller.character_name}\n"
+            f"• 챕터: {learning_info['chapters_count']}\n"
+            f"• 학습 주제: {learning_info['main_subject']}\n\n"
+            f"**최근 스토리 흐름**:\n{context_summary}\n\n"
+            f"**사용자 요청**: {user_input}\n\n"
+            "🚧 **다음 단계에서 구현 예정**: 컨텍스트 기반 연속 스토리 생성"
+        ).send()
             
     else:
         # 기존 동화 진행 로직 (추후 개선 예정)
