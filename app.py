@@ -99,6 +99,9 @@ class StoryTeller:
             
         except Exception as e:
             print(f"초기 스토리 생성 오류: {str(e)}")
+            error_message = await self.handle_error_gracefully("api_error", str(e), "초기 스토리 생성")
+            await cl.Message(content=error_message).send()
+            
             return f"""
             안녕하세요! 저는 {self.favorite_topic}을 좋아하는 친구예요! 
             오늘은 {self.learning_subject}에 대해 재미있는 모험을 떠나볼 거예요.
@@ -220,6 +223,9 @@ class StoryTeller:
             
         except Exception as e:
             print(f"연속 스토리 생성 오류: {str(e)}")
+            error_message = await self.handle_error_gracefully("api_error", str(e), "연속 스토리 생성")
+            await cl.Message(content=error_message).send()
+            
             return f"""
             {self.character_name}이/가 {user_input}을/를 보며 신기해했어요!
             
@@ -287,6 +293,8 @@ class StoryTeller:
             
         except Exception as e:
             print(f"통합 생성 오류: {str(e)}")
+            error_message = await self.handle_error_gracefully("image_generation_error", str(e), "이미지 생성")
+            await cl.Message(content=error_message).send()
             return story_text, None
     
     def should_generate_image(self, chapter_num):
@@ -326,6 +334,92 @@ class StoryTeller:
         }
         
         return suggestions.get(user_intent, suggestions["general_continuation"])
+    
+    async def handle_error_gracefully(self, error_type, error_message, context=""):
+        """에러를 사용자 친화적으로 처리"""
+        error_responses = {
+            "api_error": {
+                "title": "🔧 일시적인 문제가 발생했어요",
+                "message": "AI가 잠깐 쉬고 있는 것 같아요. 조금만 기다렸다가 다시 시도해주세요!",
+                "suggestion": "💡 같은 내용을 다시 말씀해주시거나, 다른 방식으로 표현해보세요."
+            },
+            "image_generation_error": {
+                "title": "🎨 이미지 만들기가 어려워요",
+                "message": "그림을 그리는 중에 문제가 생겼지만, 이야기는 계속 만들 수 있어요!",
+                "suggestion": "💡 텍스트로도 충분히 재미있는 이야기를 만들어갈 수 있어요."
+            },
+            "validation_error": {
+                "title": "📝 입력값을 확인해주세요",
+                "message": "입력하신 내용을 다시 한번 확인해주세요.",
+                "suggestion": "💡 예시를 참고해서 다시 입력해보세요."
+            },
+            "context_error": {
+                "title": "📚 이야기 흐름에 문제가 있어요",
+                "message": "이야기 맥락을 파악하는 중에 문제가 생겼어요.",
+                "suggestion": "💡 처음부터 다시 시작하거나, 간단하게 말씀해주세요."
+            }
+        }
+        
+        error_info = error_responses.get(error_type, error_responses["api_error"])
+        
+        response = f"{error_info['title']}\n\n"
+        response += f"{error_info['message']}\n\n"
+        if context:
+            response += f"상황: {context}\n\n"
+        response += f"{error_info['suggestion']}\n\n"
+        response += "🤗 걱정하지 마세요! 함께 해결해나가요."
+        
+        return response
+    
+    def get_recovery_suggestions(self, stage):
+        """단계별 복구 제안"""
+        recovery_options = {
+            "input_subject": [
+                "🔄 '처음부터'라고 말하면 다시 시작할 수 있어요",
+                "💭 '숫자', '색깔', '동물' 같은 간단한 주제를 시도해보세요"
+            ],
+            "input_profile": [
+                "🔄 '이전 단계'라고 말하면 학습 주제부터 다시 시작해요",
+                "💭 '6살', '활발함', '책 좋아함' 같이 간단히 말해보세요"
+            ],
+            "input_favorite": [
+                "🔄 '이전 단계'라고 말하면 자기소개부터 다시 시작해요",
+                "💭 '강아지', '파란색', '자동차' 같이 좋아하는 것을 말해보세요"
+            ],
+            "story_ongoing": [
+                "🔄 '새로운 이야기'라고 말하면 처음부터 시작해요",
+                "💭 간단한 단어나 짧은 문장으로 말해보세요",
+                "🎲 '놀라운 일이 일어났어요'라고 말해보세요"
+            ]
+        }
+        
+        return recovery_options.get(stage, recovery_options["story_ongoing"])
+    
+    async def show_help_menu(self):
+        """도움말 메뉴 표시"""
+        help_content = """
+🆘 **동화 나노바나나 도움말**
+
+**🚀 다시 시작하기:**
+• '처음부터' - 모든 것을 처음부터 다시 시작
+• '이전 단계' - 바로 전 단계로 돌아가기
+• '새로운 이야기' - 새로운 동화 시작
+
+**💡 이야기 진행 팁:**
+• 간단하고 명확하게 말해보세요
+• '친구를 만났어요', '숲에 갔어요' 같은 표현
+• 궁금한 것이나 하고 싶은 것을 자유롭게 말해보세요
+
+**🎨 이미지 관련:**
+• 첫 번째 장과 3장마다 특별한 그림이 나와요
+• 이미지가 안 나와도 이야기는 계속돼요
+
+**❓ 기타:**
+• '도움말' - 이 메뉴를 다시 볼 수 있어요
+• 언제든 자유롭게 대화해보세요!
+        """
+        
+        return help_content.strip()
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -525,6 +619,46 @@ async def start():
 @cl.on_message
 async def main(message: cl.Message):
     user_input = message.content.strip()
+    
+    # 전역 명령어 처리
+    if user_input.lower() in ['도움말', 'help', '도움', '헬프']:
+        help_content = await storyteller.show_help_menu()
+        await cl.Message(content=help_content).send()
+        return
+    
+    elif user_input.lower() in ['처음부터', '다시시작', 'restart', '새로시작']:
+        # 전체 초기화
+        storyteller.__init__()
+        await cl.Message(
+            content="🔄 **처음부터 다시 시작합니다!**\n\n"
+            "🍌 **동화 나노바나나에 다시 오신 것을 환영합니다!**\n\n"
+            "**1단계 시작! 어떤 주제를 학습하고 싶으신가요?**\n"
+            "💡 추천: 숫자, 색깔, 동물, 한글, 영어, 모양 등"
+        ).send()
+        storyteller.story_stage = "input_subject"
+        return
+    
+    elif user_input.lower() in ['이전단계', '뒤로', 'back', '이전']:
+        # 이전 단계로 복귀
+        if storyteller.story_stage == "input_profile":
+            storyteller.story_stage = "input_subject"
+            await cl.Message(
+                content="⬅️ **1단계로 돌아갑니다.**\n\n"
+                "**어떤 주제를 학습하고 싶으신가요?**\n"
+                "💡 추천: 숫자, 색깔, 동물, 한글, 영어, 모양 등"
+            ).send()
+            return
+        elif storyteller.story_stage == "input_favorite":
+            storyteller.story_stage = "input_profile"
+            await cl.Message(
+                content="⬅️ **2단계로 돌아갑니다.**\n\n"
+                "**여러분에 대해 소개해주세요**\n"
+                "💡 예시: '6살이고 호기심이 많아요', '조용하고 책 읽기를 좋아해요'"
+            ).send()
+            return
+        else:
+            await cl.Message(content="⚠️ 더 이상 뒤로 갈 수 없어요. '처음부터'를 입력하면 다시 시작할 수 있어요.").send()
+            return
     
     # Phase 1: 사용자 정보 수집
     if storyteller.story_stage == "input_subject":
@@ -806,6 +940,14 @@ async def main(message: cl.Message):
             ).send()
             
     else:
-        # 기존 동화 진행 로직 (추후 개선 예정)
-        await cl.Message(content="🚧 **개발 중**: 동화 진행 기능이 곧 추가될 예정입니다!").send()
+        # 예상하지 못한 상태 - 에러 처리
+        recovery_suggestions = storyteller.get_recovery_suggestions(storyteller.story_stage)
+        
+        await cl.Message(
+            content="😅 **잠깐, 어디에 있는지 모르겠어요!**\n\n"
+            "무언가 예상하지 못한 일이 일어난 것 같아요.\n\n"
+            "**해결 방법:**\n" + 
+            "\n".join(f"• {suggestion}" for suggestion in recovery_suggestions) + 
+            "\n\n💬 또는 '도움말'을 입력해보세요!"
+        ).send()
 
