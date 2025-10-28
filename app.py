@@ -38,6 +38,32 @@ class StoryTeller:
         # 캐릭터 일관성을 위한 디자인 정보 저장
         self.character_description = ""
         self.character_design_seeds = []
+        # 입력 검증을 위한 상태 추가
+        self.input_attempts = 0
+        self.max_attempts = 3
+        
+    def validate_input(self, input_text, stage):
+        """입력값 검증 함수"""
+        if not input_text or input_text.strip() == "":
+            return False, "입력이 비어있습니다. 다시 입력해주세요."
+        
+        if len(input_text.strip()) < 2:
+            return False, "너무 짧습니다. 조금 더 자세히 알려주세요."
+        
+        if len(input_text.strip()) > 100:
+            return False, "너무 깁니다. 간단히 요약해서 알려주세요."
+        
+        # 단계별 특별 검증
+        if stage == "input_subject":
+            # 학습 주제는 적절한 교육 내용인지 확인
+            if any(word in input_text.lower() for word in ['욕설', '폭력', '성인']):
+                return False, "적절하지 않은 내용입니다. 학습에 도움이 되는 주제를 입력해주세요."
+        
+        return True, "검증 성공"
+    
+    def reset_input_attempts(self):
+        """입력 시도 횟수 초기화"""
+        self.input_attempts = 0
         
     def image_to_base64(self, image):
         """PIL 이미지를 base64로 변환"""
@@ -236,43 +262,120 @@ async def main(message: cl.Message):
     
     # Phase 1: 사용자 정보 수집
     if storyteller.story_stage == "input_subject":
-        # 1단계: 학습 주제 입력받기
-        storyteller.learning_subject = user_input
-        await cl.Message(
-            content=f"✅ **학습 주제**: {user_input}\n\n"
-            "**2단계: 여러분에 대해 소개해주세요**\n"
-            "나이, 성격, 특징 등을 자유롭게 알려주세요!\n\n"
-            "예시: '6살이고 호기심이 많아요', '조용하고 책 읽기를 좋아해요'"
-        ).send()
-        storyteller.story_stage = "input_profile"
+        # 1단계: 학습 주제 입력받기 - 검증 포함
+        is_valid, message = storyteller.validate_input(user_input, "input_subject")
+        
+        if not is_valid:
+            storyteller.input_attempts += 1
+            if storyteller.input_attempts >= storyteller.max_attempts:
+                await cl.Message(
+                    content=f"❌ {message}\n\n"
+                    "입력 시도 횟수를 초과했습니다. 기본값으로 '숫자'를 학습 주제로 설정하겠습니다.\n\n"
+                    "**2단계: 여러분에 대해 소개해주세요**\n"
+                    "나이, 성격, 특징 등을 자유롭게 알려주세요!"
+                ).send()
+                storyteller.learning_subject = "숫자"
+                storyteller.story_stage = "input_profile"
+                storyteller.reset_input_attempts()
+            else:
+                await cl.Message(
+                    content=f"❌ {message}\n\n"
+                    f"({storyteller.input_attempts}/{storyteller.max_attempts}번째 시도)\n"
+                    "**다시 학습하고 싶은 주제를 알려주세요:**\n"
+                    "예시: 숫자, 색깔, 동물, 한글, 영어 등"
+                ).send()
+        else:
+            storyteller.learning_subject = user_input
+            storyteller.reset_input_attempts()
+            await cl.Message(
+                content=f"✅ **학습 주제**: {user_input}\n\n"
+                "**2단계: 여러분에 대해 소개해주세요**\n"
+                "나이, 성격, 특징 등을 자유롭게 알려주세요!\n\n"
+                "예시: '6살이고 호기심이 많아요', '조용하고 책 읽기를 좋아해요'"
+            ).send()
+            storyteller.story_stage = "input_profile"
         
     elif storyteller.story_stage == "input_profile":
-        # 2단계: 사용자 프로필 입력받기
-        storyteller.user_profile = user_input
-        await cl.Message(
-            content=f"✅ **사용자 정보**: {user_input}\n\n"
-            "**3단계: 좋아하는 것들을 알려주세요**\n"
-            "좋아하는 동물, 색깔, 음식, 놀이 등 무엇이든 좋아요!\n\n"
-            "예시: '강아지와 파란색', '공주님과 성', '자동차와 로봇'"
-        ).send()
-        storyteller.story_stage = "input_favorite"
+        # 2단계: 사용자 프로필 입력받기 - 검증 포함
+        is_valid, validation_msg = storyteller.validate_input(user_input, "input_profile")
+        
+        if not is_valid:
+            storyteller.input_attempts += 1
+            if storyteller.input_attempts >= storyteller.max_attempts:
+                await cl.Message(
+                    content=f"❌ {validation_msg}\n\n"
+                    "입력 시도 횟수를 초과했습니다. 기본값으로 '호기심 많은 아이'로 설정하겠습니다.\n\n"
+                    "**3단계: 좋아하는 것들을 알려주세요**\n"
+                    "좋아하는 동물, 색깔, 음식, 놀이 등 무엇이든 좋아요!"
+                ).send()
+                storyteller.user_profile = "호기심 많은 아이"
+                storyteller.story_stage = "input_favorite"
+                storyteller.reset_input_attempts()
+            else:
+                await cl.Message(
+                    content=f"❌ {validation_msg}\n\n"
+                    f"({storyteller.input_attempts}/{storyteller.max_attempts}번째 시도)\n"
+                    "**다시 여러분에 대해 소개해주세요:**\n"
+                    "예시: '6살이고 호기심이 많아요', '조용하고 책 읽기를 좋아해요'"
+                ).send()
+        else:
+            storyteller.user_profile = user_input
+            storyteller.reset_input_attempts()
+            await cl.Message(
+                content=f"✅ **사용자 정보**: {user_input}\n\n"
+                "**3단계: 좋아하는 것들을 알려주세요**\n"
+                "좋아하는 동물, 색깔, 음식, 놀이 등 무엇이든 좋아요!\n\n"
+                "예시: '강아지와 파란색', '공주님과 성', '자동차와 로봇'"
+            ).send()
+            storyteller.story_stage = "input_favorite"
         
     elif storyteller.story_stage == "input_favorite":
-        # 3단계: 좋아하는 것들 입력받기
-        storyteller.favorite_topic = user_input
+        # 3단계: 좋아하는 것들 입력받기 - 검증 포함
+        is_valid, validation_msg = storyteller.validate_input(user_input, "input_favorite")
         
-        # 모든 정보 수집 완료 - 요약 표시
-        await cl.Message(
-            content=f"✅ **좋아하는 것들**: {user_input}\n\n"
-            "🎉 **정보 수집이 완료되었습니다!**\n\n"
-            "📋 **입력하신 정보**:\n"
-            f"• **학습 주제**: {storyteller.learning_subject}\n"
-            f"• **사용자 정보**: {storyteller.user_profile}\n"
-            f"• **좋아하는 것들**: {storyteller.favorite_topic}\n\n"
-            "이제 여러분만을 위한 특별한 동화를 만들어보겠습니다! 🍌📚\n"
-            "**'동화 시작'**이라고 말하면 동화가 시작됩니다!"
-        ).send()
-        storyteller.story_stage = "ready_to_start"
+        if not is_valid:
+            storyteller.input_attempts += 1
+            if storyteller.input_attempts >= storyteller.max_attempts:
+                await cl.Message(
+                    content=f"❌ {validation_msg}\n\n"
+                    "입력 시도 횟수를 초과했습니다. 기본값으로 '강아지와 파란색'으로 설정하겠습니다.\n\n"
+                    "🎉 **정보 수집이 완료되었습니다!**"
+                ).send()
+                storyteller.favorite_topic = "강아지와 파란색"
+                storyteller.reset_input_attempts()
+                # 정보 요약 표시로 이동
+                await cl.Message(
+                    content="📋 **입력하신 정보**:\n"
+                    f"• **학습 주제**: {storyteller.learning_subject}\n"
+                    f"• **사용자 정보**: {storyteller.user_profile}\n"
+                    f"• **좋아하는 것들**: {storyteller.favorite_topic}\n\n"
+                    "이제 여러분만을 위한 특별한 동화를 만들어보겠습니다! 🍌📚\n"
+                    "**'동화 시작'**이라고 말하면 동화가 시작됩니다!"
+                ).send()
+                storyteller.story_stage = "ready_to_start"
+            else:
+                await cl.Message(
+                    content=f"❌ {validation_msg}\n\n"
+                    f"({storyteller.input_attempts}/{storyteller.max_attempts}번째 시도)\n"
+                    "**다시 좋아하는 것들을 알려주세요:**\n"
+                    "예시: '강아지와 파란색', '공주님과 성', '자동차와 로봇'"
+                ).send()
+        else:
+            storyteller.favorite_topic = user_input
+            storyteller.reset_input_attempts()
+            
+            # 모든 정보 수집 완료 - 요약 표시
+            await cl.Message(
+                content=f"✅ **좋아하는 것들**: {user_input}\n\n"
+                "🎉 **정보 수집이 완료되었습니다!**\n\n"
+                "📋 **입력하신 정보**:\n"
+                f"• **학습 주제**: {storyteller.learning_subject}\n"
+                f"• **사용자 정보**: {storyteller.user_profile}\n"
+                f"• **좋아하는 것들**: {storyteller.favorite_topic}\n\n"
+                "이제 여러분만을 위한 특별한 동화를 만들어보겠습니다! 🍌📚\n"
+                "**'동화 시작'**이라고 말하면 동화가 시작됩니다!"
+            ).send()
+            storyteller.story_stage = "ready_to_start"
         
     elif storyteller.story_stage == "ready_to_start":
         # 동화 시작 준비 완료 상태
