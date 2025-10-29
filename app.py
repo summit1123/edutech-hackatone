@@ -423,34 +423,82 @@ class StoryTeller:
         return base64.b64encode(buffer.getvalue()).decode()
     
     async def generate_story_image(self, story_prompt, character_description="", style="동화책 일러스트 스타일"):
-        """이미지 설명 생성 (실제 이미지 대신 상세한 설명 제공)"""
+        """Gemini Imagen을 사용한 실제 이미지 생성"""
         try:
-            # 이미지 생성 대신 상세한 시각적 설명 제공
+            # 이미지 생성 프롬프트 작성
+            image_prompt = f"""
+            Create a beautiful children's book illustration:
+            
+            Scene: {story_prompt}
+            Character: {character_description}
+            Style: Cute children's book illustration, watercolor style, soft pastel colors
+            
+            Requirements:
+            - Warm and friendly atmosphere
+            - Bright, cheerful colors suitable for children
+            - Simple, clear composition for young readers
+            - Hand-drawn watercolor texture
+            - Safe and positive content for 5-6 year olds
+            - Korean children's book style
+            """
+            
+            # Gemini 2.5 Flash Image 모델 사용 (generateContent 지원)
+            imagen_model = genai.GenerativeModel('gemini-2.5-flash-image')
+            
+            print(f"이미지 생성 시작: {story_prompt[:50]}...")
+            
+            # 이미지 생성 요청
+            response = imagen_model.generate_content(image_prompt)
+            
+            # 응답에서 이미지 데이터 추출
+            if response.candidates:
+                candidate = response.candidates[0]
+                
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        # 이미지 데이터가 있는지 확인
+                        if hasattr(part, 'inline_data') and part.inline_data and part.inline_data.data:
+                            print("✅ 이미지 생성 성공!")
+                            image_data = part.inline_data.data
+                            
+                            # base64 디코딩이 필요한지 확인
+                            if isinstance(image_data, str):
+                                return base64.b64decode(image_data)
+                            else:
+                                return image_data
+            
+            print("⚠️ Imagen 응답에서 이미지 데이터를 찾을 수 없음")
+            
+            # 대체 방법: 이미지 생성 대신 상세한 설명 제공
             visual_description_prompt = f"""
             다음 장면을 5-6세 아이가 머릿속으로 그려볼 수 있도록 아주 구체적이고 생생하게 묘사해주세요:
             
             장면: {story_prompt}
             캐릭터: {character_description}
-            스타일: {style}
-            
-            다음 요소들을 포함해서 설명해주세요:
-            - 캐릭터의 모습과 표정
-            - 배경과 주변 환경
-            - 색깔과 분위기
-            - 움직임이나 동작
             
             "🎨 이런 그림을 상상해보세요!" 로 시작하는 2-3문장의 시각적 설명을 작성해주세요.
             """
             
             response = text_model.generate_content(visual_description_prompt)
-            image_description = response.text
-            
-            # 시각적 설명 반환
-            return f"🎨 {image_description}"
+            return f"🎨 {response.text}"
             
         except Exception as e:
-            print(f"이미지 설명 생성 오류: {str(e)}")
-            return f"🎨 이런 그림을 상상해보세요! {self.character_name}이/가 {story_prompt} 하는 모습을 머릿속으로 그려보세요. 아마 {self.character_name}이/가 행복하고 즐거운 표정을 하고 있을 거예요!"
+            print(f"이미지 생성 오류: {str(e)}")
+            # fallback으로 시각적 설명 제공
+            visual_description_prompt = f"""
+            다음 장면을 5-6세 아이가 머릿속으로 그려볼 수 있도록 아주 구체적이고 생생하게 묘사해주세요:
+            
+            장면: {story_prompt}
+            캐릭터: {character_description}
+            
+            "🎨 이런 그림을 상상해보세요!" 로 시작하는 2-3문장의 시각적 설명을 작성해주세요.
+            """
+            
+            try:
+                response = text_model.generate_content(visual_description_prompt)
+                return f"🎨 {response.text}"
+            except:
+                return f"🎨 이런 그림을 상상해보세요! {self.character_name}이/가 {story_prompt} 하는 모습을 머릿속으로 그려보세요!"
     
     def set_user_profile(self, learning_subject, character_name, favorite_topic):
         """사용자 프로필 설정"""
@@ -773,18 +821,40 @@ async def main(message: cl.Message):
                 "story_start"
             )
             
-            # 이미지 설명이 있는 경우 함께 표시
-            content_message = f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
-            
-            # 이미지 설명 추가
-            if image_data and image_data.startswith("🎨"):
-                content_message += f"{image_data}\n\n"
-            
-            content_message += f"{initial_story}\n\n"
-            content_message += "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
-            content_message += "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟"
-            
-            await cl.Message(content=content_message).send()
+            # 이미지가 있는 경우 이미지와 함께 표시
+            if image_data and isinstance(image_data, bytes):
+                # 바이너리 이미지 데이터를 파일로 저장
+                image_filename = f"story_chapter_1.png"
+                with open(image_filename, 'wb') as f:
+                    f.write(image_data)
+                
+                # 이미지 요소 생성
+                image_element = cl.Image(
+                    name=image_filename,
+                    display="inline",
+                    path=image_filename
+                )
+                
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
+                    f"{initial_story}\n\n"
+                    "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
+                    "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟",
+                    elements=[image_element]
+                ).send()
+            else:
+                # 이미지 설명이나 이미지가 없는 경우
+                content_message = f"📖 **{storyteller.character_name}의 모험이 시작됩니다!**\n\n"
+                
+                # 이미지 설명 추가
+                if image_data and isinstance(image_data, str) and image_data.startswith("🎨"):
+                    content_message += f"{image_data}\n\n"
+                
+                content_message += f"{initial_story}\n\n"
+                content_message += "**다음에 어떤 일이 일어났으면 좋겠나요?**\n"
+                content_message += "자유롭게 말해보세요! 여러분의 아이디어로 이야기가 계속됩니다! 🌟"
+                
+                await cl.Message(content=content_message).send()
         else:
             await cl.Message(
                 content="**'동화 시작'**이라고 말씀해주시면 여러분만의 동화가 시작됩니다! 🍌"
@@ -835,24 +905,49 @@ async def main(message: cl.Message):
                 user_input
             )
             
-            # 메시지 내용 구성
-            content_message = f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
-            
-            # 이미지 설명 추가 (있는 경우)
-            if image_data and image_data.startswith("🎨"):
-                content_message += f"{image_data}\n\n"
-            
-            content_message += f"{continuation_story}\n\n"
-            
-            if intent_message:
-                content_message += f"{intent_message}\n\n"
-            
-            content_message += f"📊 **{progress_indicator}**\n\n"
-            content_message += "**또 어떤 일이 일어났으면 좋겠나요?**\n"
-            content_message += f"💡 **제안**: {' | '.join(suggestions)}\n\n"
-            content_message += "🌟 자유롭게 여러분의 아이디어를 말해주세요!"
-            
-            await cl.Message(content=content_message).send()
+            # 이미지가 있는 경우 이미지와 함께 표시
+            if image_data and isinstance(image_data, bytes):
+                # 바이너리 이미지 데이터를 파일로 저장
+                image_filename = f"story_chapter_{current_chapter}.png"
+                with open(image_filename, 'wb') as f:
+                    f.write(image_data)
+                
+                # 이미지 요소 생성
+                image_element = cl.Image(
+                    name=image_filename,
+                    display="inline",
+                    path=image_filename
+                )
+                
+                await cl.Message(
+                    content=f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
+                    f"{continuation_story}\n\n"
+                    f"{intent_message}\n\n" if intent_message else ""
+                    f"📊 **{progress_indicator}**\n\n"
+                    "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+                    f"💡 **제안**: {' | '.join(suggestions)}\n\n"
+                    "🌟 자유롭게 여러분의 아이디어를 말해주세요!",
+                    elements=[image_element]
+                ).send()
+            else:
+                # 이미지 설명이나 이미지가 없는 경우
+                content_message = f"📖 **{storyteller.character_name}의 모험 - 챕터 {current_chapter}**\n\n"
+                
+                # 이미지 설명 추가 (있는 경우)
+                if image_data and isinstance(image_data, str) and image_data.startswith("🎨"):
+                    content_message += f"{image_data}\n\n"
+                
+                content_message += f"{continuation_story}\n\n"
+                
+                if intent_message:
+                    content_message += f"{intent_message}\n\n"
+                
+                content_message += f"📊 **{progress_indicator}**\n\n"
+                content_message += "**또 어떤 일이 일어났으면 좋겠나요?**\n"
+                content_message += f"💡 **제안**: {' | '.join(suggestions)}\n\n"
+                content_message += "🌟 자유롭게 여러분의 아이디어를 말해주세요!"
+                
+                await cl.Message(content=content_message).send()
         else:
             # 텍스트만 표시 (성능 최적화)
             await cl.Message(

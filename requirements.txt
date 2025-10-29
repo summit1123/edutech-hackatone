@@ -4,3 +4,4 @@ google-genai==1.46.0
 python-dotenv==1.0.1
 Pillow==10.4.0
 asyncio
+openai==2.6.1
