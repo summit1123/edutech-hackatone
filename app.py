@@ -440,6 +440,9 @@ class StoryTeller:
             - Hand-drawn watercolor texture
             - Safe and positive content for 5-6 year olds
             - Korean children's book style
+            - NO TEXT OR WORDS in the image
+            - NO Korean characters or any text elements
+            - Pure visual illustration without any written content
             """
             
             # Gemini 2.5 Flash Image 모델 사용 (generateContent 지원)
